@@ -9,6 +9,7 @@ from sympy.polys.agca.modules import FreeModuleQuotientRing
 # - poly rings over quotients?
 # - division by non-units in integral domains?
 
+
 class QuotientRingElement(object):
     """
     Class representing elements of (commutative) quotient rings.
@@ -82,6 +83,7 @@ class QuotientRingElement(object):
     def __ne__(self, om):
         return not self.__eq__(om)
 
+
 class QuotientRing(Ring):
     """
     Class representing (commutative) quotient rings.
@@ -109,7 +111,7 @@ class QuotientRing(Ring):
     - base_ideal - the ideal we are quotienting by
     """
 
-    has_assoc_Ring  = True
+    has_assoc_Ring = True
     has_assoc_Field = False
     dtype = QuotientRingElement
 
@@ -127,7 +129,7 @@ class QuotientRing(Ring):
     def __hash__(self):
         return hash((self.__class__.__name__, self.dtype, self.ring, self.base_ideal))
 
-    def __call__(self, a):
+    def new(self, a):
         """Construct an element of `self` domain from `a`. """
         if not isinstance(a, self.ring.dtype):
             a = self.ring(a)
@@ -136,24 +138,16 @@ class QuotientRing(Ring):
 
     def __eq__(self, other):
         """Returns `True` if two domains are equivalent. """
-        if not isinstance(other, QuotientRing):
-            return False
-        return self.ring == other.ring and self.base_ideal == other.base_ideal
-
-    def __ne__(self, other):
-        """Returns `False` if two domains are equivalent. """
-        return not self.__eq__(other)
+        return isinstance(other, QuotientRing) and \
+            self.ring == other.ring and self.base_ideal == other.base_ideal
 
     def from_ZZ_python(K1, a, K0):
         """Convert a Python `int` object to `dtype`. """
         return K1(K1.ring.convert(a, K0))
 
     from_QQ_python = from_ZZ_python
-    from_ZZ_sympy = from_ZZ_python
-    from_QQ_sympy = from_ZZ_python
     from_ZZ_gmpy = from_ZZ_python
     from_QQ_gmpy = from_ZZ_python
-    from_RR_sympy = from_ZZ_python
     from_RR_mpmath = from_ZZ_python
     from_GlobalPolynomialRing = from_ZZ_python
     from_FractionField = from_ZZ_python
@@ -183,7 +177,7 @@ class QuotientRing(Ring):
         I = self.ring.ideal(a.data) + self.base_ideal
         try:
             return self(I.in_terms_of_generators(1)[0])
-        except ValueError: # 1 not in I
+        except ValueError:  # 1 not in I
             raise NotReversible('%s not a unit in %r' % (a, self))
 
     def is_zero(self, a):

@@ -11,7 +11,7 @@ from sympy.core.compatibility import cmp, is_sequence
 from sympy.core.basic import Basic
 from sympy.core.sympify import sympify
 from sympy.functions import cos, sin
-from sympy.matrices.matrices import eye
+from sympy.matrices import eye
 
 # How entities are ordered; used by __cmp__ in GeometryEntity
 ordering_of_classes = [
@@ -27,6 +27,7 @@ ordering_of_classes = [
     "Curve"
 ]
 
+
 class GeometryEntity(Basic):
     """The base class for all geometrical entities.
 
@@ -36,7 +37,8 @@ class GeometryEntity(Basic):
     """
 
     def __new__(cls, *args, **kwargs):
-        return Basic.__new__(cls, *sympify(args))
+        args = map(sympify, args)
+        return Basic.__new__(cls, *args)
 
     def _sympy_(self):
         return self
@@ -122,7 +124,7 @@ class GeometryEntity(Basic):
         if pt:
             pt = Point(pt)
             return self.translate(*(-pt).args).scale(x, y).translate(*pt.args)
-        return type(self)(*[a.scale(x, y) for a in self.args]) # if this fails, override this class
+        return type(self)(*[a.scale(x, y) for a in self.args])  # if this fails, override this class
 
     def translate(self, x=0, y=0):
         """Shift the object by adding to the x,y-coordinates the values x and y.
@@ -142,7 +144,8 @@ class GeometryEntity(Basic):
         >>> t.translate(2)
         Triangle(Point(3, 0), Point(3/2, sqrt(3)/2), Point(3/2, -sqrt(3)/2))
         >>> t.translate(2, 2)
-        Triangle(Point(3, 2), Point(3/2, sqrt(3)/2 + 2), Point(3/2, -sqrt(3)/2 + 2))
+        Triangle(Point(3, 2), Point(3/2, sqrt(3)/2 + 2),
+            Point(3/2, -sqrt(3)/2 + 2))
 
         """
         newargs = []
@@ -151,7 +154,32 @@ class GeometryEntity(Basic):
                 newargs.append(a.translate(x, y))
             else:
                 newargs.append(a)
-        return type(self)(*newargs)
+        return self.func(*newargs)
+
+    def reflect(self, line):
+        from sympy import atan, Line, Point, Dummy, oo
+
+        g = self
+        l = line
+        o = Point(0, 0)
+        if l == Line(o, slope=0):
+            return g.scale(y=-1)
+        elif l == Line(o, slope=oo):
+            return g.scale(-1)
+        if not hasattr(g, 'reflect') and not all(
+                isinstance(arg, Point) for arg in g.args):
+            raise NotImplementedError
+        a = atan(l.slope)
+        c = l.coefficients
+        d = -c[-1]/c[1]  # y-intercept
+        # apply the transform to a single point
+        x, y = Dummy(), Dummy()
+        xf = Point(x, y)
+        xf = xf.translate(y=-d).rotate(-a, o).scale(y=-1
+            ).rotate(a, o).translate(y=d)
+        # replace every point using that transform
+        reps = [(p, xf.xreplace({x: p.x, y: p.y})) for p in g.atoms(Point)]
+        return g.xreplace(dict(reps))
 
     def encloses(self, o):
         """
@@ -289,12 +317,14 @@ class GeometryEntity(Basic):
             new = Point(new)
             return self._subs(old, new)
 
+
 def translate(x, y):
     """Return the matrix to translate a 2-D point by x and y."""
     rv = eye(3)
     rv[2, 0] = x
     rv[2, 1] = y
     return rv
+
 
 def scale(x, y, pt=None):
     """Return the matrix to multiply a 2-D point's coordinates by x and y.
@@ -310,6 +340,7 @@ def scale(x, y, pt=None):
         tr2 = translate(*pt.args)
         return tr1*rv*tr2
     return rv
+
 
 def rotate(th):
     """Return the matrix to rotate a 2-D point about the origin by ``angle``.

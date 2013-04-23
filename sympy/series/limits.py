@@ -1,6 +1,7 @@
 from sympy.core import S, Symbol, Add, sympify, Expr, PoleError, Mul, oo, C
-from sympy.functions import tan, cot
+from sympy.functions import tan, cot, factorial, gamma
 from gruntz import gruntz
+
 
 def limit(e, z, z0, dir="+"):
     """
@@ -48,6 +49,13 @@ def limit(e, z, z0, dir="+"):
     if not e.has(z):
         return e
 
+    # gruntz fails on factorials but works with the gamma function
+    # If no factorial term is present, e should remain unchanged.
+    # factorial is defined to be zero for negative inputs (which
+    # differs from gamma) so only rewrite for positive z0.
+    if z0.is_positive:
+        e = e.rewrite(factorial, gamma)
+
     if e.func is tan:
         # discontinuity at odd multiples of pi/2; 0 at even
         disc = S.Pi/2
@@ -81,7 +89,7 @@ def limit(e, z, z0, dir="+"):
 
     if e.is_Pow:
         b, ex = e.args
-        c = None # records sign of b if b is +/-z or has a bounded value
+        c = None  # records sign of b if b is +/-z or has a bounded value
         if b.is_Mul:
             c, b = b.as_two_terms()
             if c is S.NegativeOne and b == z:
@@ -169,6 +177,7 @@ def limit(e, z, z0, dir="+"):
         unknown_result = []
         finite = []
         zero = []
+
         def _sift(term):
             if z not in term.free_symbols:
                 if term.is_unbounded:
@@ -266,6 +275,7 @@ def limit(e, z, z0, dir="+"):
         r = heuristics(e, z, z0, dir)
     return r
 
+
 def heuristics(e, z, z0, dir):
     if abs(z0) is S.Infinity:
         return limit(e.subs(z, 1/z), z, S.Zero, "+" if z0 is S.Infinity else "-")
@@ -314,7 +324,8 @@ class Limit(Expr):
         elif not isinstance(dir, Symbol):
             raise TypeError("direction must be of type basestring or Symbol, not %s" % type(dir))
         if str(dir) not in ('+', '-'):
-            raise ValueError("direction must be either '+' or '-', not %s" % dir)
+            raise ValueError(
+                "direction must be either '+' or '-', not %s" % dir)
         obj = Expr.__new__(cls)
         obj._args = (e, z, z0, dir)
         return obj

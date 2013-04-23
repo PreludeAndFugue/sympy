@@ -22,18 +22,22 @@ from util import parse_option_string
 
 from sympy.geometry.entity import GeometryEntity
 
+
+from sympy.utilities.decorator import doctest_depends_on, no_attrs_in_subclass
+
 class PygletPlot(object):
     """
     Plot Examples
     =============
 
-    See examples/plotting.py for many more examples.
+    See examples/advaned/pyglet_plotting.py for many more examples.
 
 
-    >>> from sympy import Plot
+    >>> from sympy.plotting.pygletplot import PygletPlot as Plot
     >>> from sympy.abc import x, y, z
 
     >>> Plot(x*y**3-y*x**3)
+    [0]: -x**3*y + x*y**3, 'mode=cartesian'
 
     >>> p = Plot()
     >>> p[1] = x*y
@@ -52,13 +56,20 @@ class PygletPlot(object):
     from the defaults for the current coordinate mode:
 
     >>> Plot(x**2) # implies [x,-5,5,100]
+    [0]: x**2, 'mode=cartesian'
     >>> Plot(x**2, [], []) # [x,-1,1,40], [y,-1,1,40]
+    [0]: x**2, 'mode=cartesian'
     >>> Plot(x**2-y**2, [100], [100]) # [x,-1,1,100], [y,-1,1,100]
+    [0]: x**2 - y**2, 'mode=cartesian'
     >>> Plot(x**2, [x,-13,13,100])
+    [0]: x**2, 'mode=cartesian'
     >>> Plot(x**2, [-13,13]) # [x,-13,13,100]
-    >>> Plot(x**2, [x,-13,13]) # [x,-13,13,100]
+    [0]: x**2, 'mode=cartesian'
+    >>> Plot(x**2, [x,-13,13]) # [x,-13,13,10]
+    [0]: x**2, 'mode=cartesian'
     >>> Plot(1*x, [], [x], mode='cylindrical')
     ... # [unbound_theta,0,2*Pi,40], [x,-1,1,20]
+    [0]: x, 'mode=cartesian'
 
 
     Coordinate Modes
@@ -83,7 +94,7 @@ class PygletPlot(object):
     1: parametric, cartesian, polar
     2: parametric, cartesian, cylindrical = polar, spherical
 
-    >>> Plot(1, mode='spherical')
+    >>> Plot(1, mode='spherical') # doctest: +SKIP
 
 
     Calculator-like Interface
@@ -93,8 +104,8 @@ class PygletPlot(object):
     >>> f = x**2
     >>> p[1] = f
     >>> p[2] = f.diff(x)
-    >>> p[3] = f.diff(x).diff(x)
-    >>> p
+    >>> p[3] = f.diff(x).diff(x) # doctest: +SKIP
+    >>> p # doctest: +SKIP
     [1]: x**2, 'mode=cartesian'
     [2]: 2*x, 'mode=cartesian'
     [3]: 2, 'mode=cartesian'
@@ -143,7 +154,10 @@ class PygletPlot(object):
     =============================
 
     """
+    #python 2.5 does not support class decorators so use this workaround
+    _doctest_depends_on = {'modules': ('pyglet',)}
 
+    @doctest_depends_on(modules=('pyglet',))
     def __init__(self, *fargs, **win_args):
         """
         Positional Arguments
@@ -153,6 +167,7 @@ class PygletPlot(object):
         initialize a plot function at index 1. In
         other words...
 
+        >>> from sympy.plotting.pygletplot import PygletPlot as Plot
         >>> from sympy.core import Symbol
         >>> from sympy.abc import x
         >>> p = Plot(x**2, visible=False)
@@ -241,6 +256,10 @@ class PygletPlot(object):
         else:
             self._win_args['visible'] = True
             self.axes.reset_resources()
+
+            if hasattr(self, '_doctest_depends_on'):
+                self._win_args['runfromdoctester'] = True
+
             self._window = PlotWindow(self, **self._win_args)
 
     def close(self):
@@ -296,7 +315,7 @@ class PygletPlot(object):
             if (not is_sequence(args)) or isinstance(args, GeometryEntity):
                 args = [args]
             if len(args) == 0:
-                return # no arguments given
+                return  # no arguments given
             kwargs = dict(bounds_callback=self.adjust_all_bounds)
             f = PlotMode(*args, **kwargs)
 
@@ -362,7 +381,7 @@ class PygletPlot(object):
         else:
             self._render_lock.acquire()
             s += "\n".join(["%s[%i]: %s" % ("", i, str(self._functions[i]))
-                              for i in self._functions])
+                            for i in self._functions])
             self._render_lock.release()
         return s
 
@@ -382,7 +401,9 @@ class PygletPlot(object):
             while a() or b():
                 sleep(0)
         self._render_lock.release()
-
+#python 2.5 does not support class decorators so use this workaround
+PygletPlot._doctest_depends_on = no_attrs_in_subclass(
+    PygletPlot, PygletPlot._doctest_depends_on)
 
 class ScreenShot:
     def __init__(self, plot):
@@ -399,7 +420,7 @@ class ScreenShot:
         return 0
 
     def _execute_saving(self):
-        if self.flag <3:
+        if self.flag < 3:
             self.flag += 1
             return
 
@@ -416,7 +437,6 @@ class ScreenShot:
         self.screenshot_requested = False
         if self.invisibleMode:
             self._plot._window.close()
-
 
     def save(self, outfile=None, format='', size=(600, 500)):
         self.outfile = outfile

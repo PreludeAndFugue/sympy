@@ -6,6 +6,7 @@ from threading import Thread, Lock
 
 gl_lock = Lock()
 
+
 class ManagedWindow(Window):
     """
     A pyglet window with an event loop which executes automatically
@@ -24,8 +25,13 @@ class ManagedWindow(Window):
         class, unless you need to take additional arguments.
         Do any OpenGL initialization calls in setup().
         """
+
+        # check if this is run from the doctester
+        if win_args.get('runfromdoctester', False):
+            return
+
         self.win_args = dict(self.default_win_args, **win_args)
-        self.Thread=Thread(target=self.__event_loop__)
+        self.Thread = Thread(target=self.__event_loop__)
         self.Thread.start()
 
     def __event_loop__(self, **win_args):

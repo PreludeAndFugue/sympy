@@ -4,10 +4,12 @@ from sympy.functions.elementary.miscellaneous import sqrt
 from sympy.functions.elementary.piecewise import Piecewise
 from sympy.core import Add, Mul
 from sympy.core.relational import Eq
+from sympy.functions.elementary.trigonometric import atan, atan2
 
 ###############################################################################
 ######################### REAL and IMAGINARY PARTS ############################
 ###############################################################################
+
 
 class re(Function):
     """Returns real part of expression. This function performs only
@@ -39,7 +41,7 @@ class re(Function):
     nargs = 1
 
     is_real = True
-    unbranched = True # implicitely works on the projection to C
+    unbranched = True  # implicitely works on the projection to C
 
     @classmethod
     def eval(cls, arg):
@@ -79,17 +81,11 @@ class re(Function):
 
                 return cls(a) - im(b) + c
 
-    def as_real_imag(self, deep=True):
+    def as_real_imag(self, deep=True, **hints):
         """
         Returns the real number with a zero complex part.
         """
         return (self, S.Zero)
-
-    def _eval_expand_complex(self, deep=True, **hints):
-#        if deep:
-#            return self.args[0].expand(deep, **hints).as_real_imag()[0]
-#        else:
-        return self.args[0].as_real_imag()[0]
 
     def _eval_derivative(self, x):
         if x.is_real or self.args[0].is_real:
@@ -134,7 +130,7 @@ class im(Function):
     nargs = 1
 
     is_real = True
-    unbranched = True # implicitely works on the projection to C
+    unbranched = True  # implicitely works on the projection to C
 
     @classmethod
     def eval(cls, arg):
@@ -173,7 +169,7 @@ class im(Function):
 
                 return cls(a) + re(b) + c
 
-    def as_real_imag(self, deep=True):
+    def as_real_imag(self, deep=True, **hints):
         """
         Return the imaginary part with a zero real part.
 
@@ -186,11 +182,6 @@ class im(Function):
         (3, 0)
         """
         return (self, S.Zero)
-
-    def _eval_expand_complex(self, deep=True, **hints):
-#        if deep:
-#            return self.args[0].expand(deep, **hints).as_real_imag()[1]
-        return self.args[0].as_real_imag()[1]
 
     def _eval_derivative(self, x):
         if x.is_real or self.args[0].is_real:
@@ -229,6 +220,9 @@ class sign(Function):
 
     nargs = 1
 
+    is_bounded = True
+    is_complex = True
+
     def doit(self):
         if self.args[0].is_nonzero:
             return self.args[0] / Abs(self.args[0])
@@ -236,9 +230,33 @@ class sign(Function):
 
     @classmethod
     def eval(cls, arg):
+        # handle what we can
+        if arg.is_Mul:
+            c, args = arg.as_coeff_mul()
+            unk = []
+            is_imag = c.is_imaginary
+            is_neg = c.is_negative
+            for a in args:
+                if a.is_negative:
+                    is_neg = not is_neg
+                elif a.is_positive:
+                    pass
+                else:
+                    ai = im(a)
+                    if a.is_imaginary and ai.is_comparable:  # i.e. a = I*real
+                        is_imag = not is_imag
+                        if ai.is_negative:
+                            is_neg = not is_neg
+                    else:
+                        unk.append(a)
+            if c is S.One and len(unk) == len(args):
+                return None
+            return (S.NegativeOne if is_neg else S.One) \
+                * (S.ImaginaryUnit if is_imag else S.One) \
+                * cls(arg._new_rawargs(*unk))
         if arg is S.NaN:
             return S.NaN
-        if arg is S.Zero:
+        if arg.is_zero:  # it may be an Expr that is zero
             return S.Zero
         if arg.is_positive:
             return S.One
@@ -253,27 +271,6 @@ class sign(Function):
                 return S.ImaginaryUnit
             if arg2.is_negative:
                 return -S.ImaginaryUnit
-        if arg.is_Mul:
-            c, args = arg.as_coeff_mul()
-            unk = []
-            is_imag = c.is_imaginary
-            is_neg = c.is_negative
-            for ai in args:
-                ai2 = -S.ImaginaryUnit * ai
-                if ai.is_negative:
-                    is_neg = not is_neg
-                elif ai.is_imaginary and ai2.is_positive:
-                    is_imag = not is_imag
-                elif ai.is_negative is None or \
-                    (ai.is_imaginary is None or ai2.is_positive is None):
-                    unk.append(ai)
-            if c is S.One and len(unk) == len(args):
-                return None
-            return (S.NegativeOne if is_neg else S.One) \
-                * (S.ImaginaryUnit if is_imag else S.One) \
-                * cls(arg._new_rawargs(*unk))
-
-    is_bounded = True
 
     def _eval_Abs(self):
         if self.args[0].is_nonzero:
@@ -292,6 +289,12 @@ class sign(Function):
             return 2 * Derivative(self.args[0], x, **{'evaluate': True}) \
                 * DiracDelta(-S.ImaginaryUnit * self.args[0])
 
+    def _eval_is_imaginary(self):
+        return self.args[0].is_imaginary
+
+    def _eval_is_integer(self):
+        return self.args[0].is_real
+
     def _eval_is_zero(self):
         return self.args[0].is_zero
 
@@ -301,12 +304,17 @@ class sign(Function):
             self.args[0].is_nonzero and
             other.is_integer and
             other.is_even
-            ):
+        ):
             return S.One
 
     def _sage_(self):
         import sage.all as sage
         return sage.sgn(self.args[0]._sage_())
+
+    def _eval_rewrite_as_Piecewise(self, arg):
+        if arg.is_real:
+            return Piecewise((1, arg > 0), (-1, arg < 0), (0, True))
+
 
 class Abs(Function):
     """
@@ -375,6 +383,7 @@ class Abs(Function):
             obj = arg._eval_Abs()
             if obj is not None:
                 return obj
+        # handle what we can
         if arg.is_Mul:
             known = []
             unk = []
@@ -389,6 +398,8 @@ class Abs(Function):
             return known*unk
         if arg is S.NaN:
             return S.NaN
+        if arg.is_zero:  # it may be an Expr that is zero
+            return S.Zero
         if arg.is_nonnegative:
             return arg
         if arg.is_nonpositive:
@@ -425,9 +436,9 @@ class Abs(Function):
         s = self.args[0]._eval_nseries(x, n=n, logx=logx)
         when = Eq(direction, 0)
         return Piecewise(
-                         ((s.subs(direction, 0)), when),
-                         (sign(direction)*s, True),
-                         )
+            ((s.subs(direction, 0)), when),
+            (sign(direction)*s, True),
+        )
 
     def _sage_(self):
         import sage.all as sage
@@ -446,8 +457,11 @@ class Abs(Function):
         # for complex arguments).
         if arg.is_real:
             return arg*(C.Heaviside(arg) - C.Heaviside(-arg))
-        else:
-            return self
+
+    def _eval_rewrite_as_Piecewise(self, arg):
+        if arg.is_real:
+            return Piecewise((arg, arg >= 0), (-arg, True))
+
 
 class arg(Function):
     """Returns the argument (in radians) of a complex number"""
@@ -468,6 +482,10 @@ class arg(Function):
         x, y = re(self.args[0]), im(self.args[0])
         return (x * Derivative(y, t, **{'evaluate': True}) - y *
                 Derivative(x, t, **{'evaluate': True})) / (x**2 + y**2)
+
+    def _eval_rewrite_as_atan2(self, arg):
+        x, y = re(self.args[0]), im(self.args[0])
+        return atan2(y, x)
 
 class conjugate(Function):
     """
@@ -498,6 +516,9 @@ class conjugate(Function):
     def _eval_Abs(self):
         return Abs(self.args[0], **{'evaluate': True})
 
+    def _eval_adjoint(self):
+        return transpose(self.args[0])
+
     def _eval_conjugate(self):
         return self.args[0]
 
@@ -507,9 +528,78 @@ class conjugate(Function):
         elif x.is_imaginary:
             return -conjugate(Derivative(self.args[0], x, **{'evaluate': True}))
 
+    def _eval_transpose(self):
+        return adjoint(self.args[0])
+
+
+class transpose(Function):
+    """
+    Linear map transposition.
+    """
+
+    nargs = 1
+
+    @classmethod
+    def eval(cls, arg):
+        obj = arg._eval_transpose()
+        if obj is not None:
+            return obj
+
+    def _eval_adjoint(self):
+        return conjugate(self.args[0])
+
+    def _eval_conjugate(self):
+        return adjoint(self.args[0])
+
+    def _eval_transpose(self):
+        return self.args[0]
+
+
+class adjoint(Function):
+    """
+    Conjugate transpose or Hermite conjugation.
+    """
+
+    nargs = 1
+
+    @classmethod
+    def eval(cls, arg):
+        obj = arg._eval_adjoint()
+        if obj is not None:
+            return obj
+        obj = arg._eval_transpose()
+        if obj is not None:
+            return conjugate(obj)
+
+    def _eval_adjoint(self):
+        return self.args[0]
+
+    def _eval_conjugate(self):
+        return transpose(self.args[0])
+
+    def _eval_transpose(self):
+        return conjugate(self.args[0])
+
+    def _latex(self, printer, exp=None, *args):
+        arg = printer._print(self.args[0])
+        tex = r'%s^{\dag}' % arg
+        if exp:
+            tex = r'\left(%s\right)^{%s}' % (tex, printer._print(exp))
+        return tex
+
+    def _pretty(self, printer, *args):
+        from sympy.printing.pretty.stringpict import prettyForm
+        pform = printer._print(self.args[0], *args)
+        if printer._use_unicode:
+            pform = pform**prettyForm(u'\u2020')
+        else:
+            pform = pform**prettyForm('+')
+        return pform
+
 ###############################################################################
 ############### HANDLING OF POLAR NUMBERS #####################################
 ###############################################################################
+
 
 class polar_lift(Function):
     """
@@ -543,7 +633,7 @@ class polar_lift(Function):
     nargs = 1
 
     is_polar = True
-    is_comparable = False # Cannot be evalf'd.
+    is_comparable = False  # Cannot be evalf'd.
 
     @classmethod
     def eval(cls, arg):
@@ -579,6 +669,7 @@ class polar_lift(Function):
     def _eval_evalf(self, prec):
         """ Careful! any evalf of polar numbers is flaky """
         return self.args[0]._eval_evalf(prec)
+
 
 class periodic_argument(Function):
     """
@@ -624,7 +715,8 @@ class periodic_argument(Function):
                 unbranched += a.exp.as_real_imag()[1]
             elif a.is_Pow:
                 re, im = a.exp.as_real_imag()
-                unbranched += re*unbranched_argument(a.base) + im*log(abs(a.base))
+                unbranched += re*unbranched_argument(
+                    a.base) + im*log(abs(a.base))
             elif a.func is polar_lift:
                 unbranched += arg(a.args[0])
             else:
@@ -671,9 +763,11 @@ class periodic_argument(Function):
         ub = periodic_argument(z, oo)._eval_evalf(prec)
         return (ub - ceiling(ub/period - S(1)/2)*period)._eval_evalf(prec)
 
+
 def unbranched_argument(arg):
     from sympy import oo
     return periodic_argument(arg, oo)
+
 
 class principal_branch(Function):
     """
@@ -703,7 +797,7 @@ class principal_branch(Function):
 
     nargs = 2
     is_polar = True
-    is_comparable = False # cannot always be evalf'd
+    is_comparable = False  # cannot always be evalf'd
 
     @classmethod
     def eval(self, x, period):
@@ -715,8 +809,9 @@ class principal_branch(Function):
         ub = periodic_argument(x, oo)
         barg = periodic_argument(x, period)
         if ub != barg and not ub.has(periodic_argument) \
-           and not barg.has(periodic_argument):
+                and not barg.has(periodic_argument):
             pl = polar_lift(x)
+
             def mr(expr):
                 if not isinstance(expr, Symbol):
                     return polar_lift(expr)
@@ -742,13 +837,13 @@ class principal_branch(Function):
         arg = periodic_argument(c, period)
         if arg.has(periodic_argument):
             return None
-        if arg.is_number and (unbranched_argument(c) != arg or \
+        if arg.is_number and (unbranched_argument(c) != arg or
                               (arg == 0 and m != () and c != 1)):
             if arg == 0:
                 return abs(c)*principal_branch(Mul(*m), period)
             return principal_branch(exp_polar(I*arg)*Mul(*m), period)*abs(c)
         if arg.is_number and ((abs(arg) < period/2) is True or arg == period/2) \
-           and m == ():
+                and m == ():
             return exp_polar(arg*I)*abs(c)
 
     def _eval_evalf(self, prec):
@@ -756,7 +851,7 @@ class principal_branch(Function):
         z, period = self.args
         p = periodic_argument(z, period)._eval_evalf(prec)
         if abs(p) > pi or p == -pi:
-            return self # Cannot evalf for this argument.
+            return self  # Cannot evalf for this argument.
         return (abs(z)*exp(I*p))._eval_evalf(prec)
 
 # /cyclic/
